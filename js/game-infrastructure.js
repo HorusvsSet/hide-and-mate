@@ -593,6 +593,7 @@ class GameInfrastructure {
     const playersListener = playersRef.on('value', (snapshot) => {
       const oldPlayers = { ...this._players };
       const newPlayers = snapshot.val() || {};
+      const isEmpty = Object.keys(oldPlayers).length === 0;
 
       // Detectar jugadores que se unieron
       Object.keys(newPlayers).forEach(pid => {
@@ -628,6 +629,11 @@ class GameInfrastructure {
 
       // Actualizar copia local
       this._players = newPlayers;
+
+      // En la primera carga (oldPlayers vacío), emitir playersUpdate para refrescar UI
+      if (isEmpty && Object.keys(newPlayers).length > 0) {
+        this._emit('playersUpdate', newPlayers);
+      }
 
       // Si la sala quedó vacía y este cliente sigue conectado, limpiarla
       if (Object.keys(newPlayers).length === 0) {
