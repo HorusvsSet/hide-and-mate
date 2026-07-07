@@ -1035,14 +1035,11 @@ class GameInfrastructure {
       gameStateUpdate.objects = initialState.objects;
     }
 
-    await this.db.ref(`rooms/${this.roomCode}`).update({
-      status: 'playing',
-      ['gameState']: this.db.ref(`rooms/${this.roomCode}/gameState`).update ?
-        null : null // Necesitamos usar update en gameState
-    });
-
     // Actualizar el gameState
     await this.db.ref(`rooms/${this.roomCode}/gameState`).update(gameStateUpdate);
+
+    // Actualizar status a 'playing'
+    await this.db.ref(`rooms/${this.roomCode}/status`).set('playing');
 
     console.log('🎮 ¡Partida iniciada!');
   }
