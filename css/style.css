@@ -1,0 +1,554 @@
+/**
+ * ============================================================
+ * ESTILOS DEL JUEGO MULTIJUGADOR
+ * ============================================================
+ */
+
+/* =========================================================================
+   RESET Y BASE
+   ========================================================================= */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #1a1a2e;
+  color: #eaeaea;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* =========================================================================
+   HEADER
+   ========================================================================= */
+.header {
+  width: 100%;
+  background: #16213e;
+  padding: 12px 20px;
+  text-align: center;
+  border-bottom: 2px solid #0f3460;
+}
+
+.header h1 {
+  font-size: 1.5em;
+  color: #e94560;
+  margin: 0;
+}
+
+.header .subtitle {
+  font-size: 0.8em;
+  color: #a0a0b0;
+}
+
+/* =========================================================================
+   CONTENEDOR PRINCIPAL
+   ========================================================================= */
+.main-container {
+  width: 100%;
+  max-width: 800px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+/* =========================================================================
+   PANTALLAS (LOBBY, ESPERA, JUEGO)
+   ========================================================================= */
+.screen {
+  width: 100%;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.screen.active {
+  display: flex;
+}
+
+/* =========================================================================
+   TARJETAS / PANELES
+   ========================================================================= */
+.card {
+  width: 100%;
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.card h2 {
+  font-size: 1.2em;
+  color: #e94560;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.card h3 {
+  font-size: 1em;
+  color: #c0c0d0;
+  margin-bottom: 8px;
+}
+
+/* =========================================================================
+   FORMULARIOS
+   ========================================================================= */
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.input-group label {
+  font-size: 0.85em;
+  color: #a0a0b0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.input-group input {
+  padding: 10px 14px;
+  border: 2px solid #0f3460;
+  border-radius: 8px;
+  background: #1a1a2e;
+  color: #ffffff;
+  font-size: 1em;
+  transition: border-color 0.3s;
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.input-group input::placeholder {
+  color: #555;
+}
+
+/* =========================================================================
+   BOTONES
+   ========================================================================= */
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-primary {
+  background: #e94560;
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #c73652;
+  box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
+}
+
+.btn-secondary {
+  background: #0f3460;
+  color: #eaeaea;
+}
+
+.btn-secondary:hover {
+  background: #1a4a7a;
+}
+
+.btn-success {
+  background: #2ecc71;
+  color: #1a1a2e;
+}
+
+.btn-success:hover {
+  background: #27ae60;
+}
+
+.btn-danger {
+  background: #e74c3c;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #c0392b;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* =========================================================================
+   CÓDIGO DE SALA
+   ========================================================================= */
+.room-code-display {
+  background: #0f3460;
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+}
+
+.room-code {
+  font-size: 3em;
+  font-weight: 900;
+  color: #e94560;
+  letter-spacing: 8px;
+  font-family: 'Courier New', monospace;
+}
+
+.room-code-label {
+  font-size: 0.75em;
+  color: #a0a0b0;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+
+/* =========================================================================
+   LISTA DE JUGADORES
+   ========================================================================= */
+.player-list {
+  list-style: none;
+  width: 100%;
+}
+
+.player-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #1a1a2e;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  border: 1px solid #0f3460;
+}
+
+.player-item .player-name {
+  font-weight: 600;
+}
+
+.player-item .player-badge {
+  font-size: 0.7em;
+  padding: 3px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.badge-host {
+  background: #e94560;
+  color: #fff;
+}
+
+.badge-you {
+  background: #0f3460;
+  color: #eaeaea;
+}
+
+.badge-reina {
+  background: #f39c12;
+  color: #1a1a2e;
+}
+
+.badge-rey {
+  background: #3498db;
+  color: #fff;
+}
+
+.player-item .player-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.status-online {
+  background: #2ecc71;
+}
+
+.status-offline {
+  background: #e74c3c;
+}
+
+/* =========================================================================
+   TABLERO DE AJEDREZ
+   ========================================================================= */
+.board-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+canvas#boardCanvas {
+  border: 3px solid #0f3460;
+  border-radius: 4px;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.board-info {
+  display: flex;
+  gap: 20px;
+  font-size: 0.9em;
+  color: #a0a0b0;
+}
+
+.board-info span {
+  font-weight: 600;
+  color: #eaeaea;
+}
+
+/* =========================================================================
+   CONTROLES DE JUEGO
+   ========================================================================= */
+.game-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.turn-indicator {
+  text-align: center;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95em;
+}
+
+.turn-indicator.my-turn {
+  background: #2ecc71;
+  color: #1a1a2e;
+  animation: pulse 1.5s infinite;
+}
+
+.turn-indicator.waiting {
+  background: #0f3460;
+  color: #a0a0b0;
+}
+
+.turn-indicator.eliminated {
+  background: #e74c3c;
+  color: #fff;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* =========================================================================
+   LOG DE MENSAJES
+   ========================================================================= */
+.message-log {
+  width: 100%;
+  max-height: 150px;
+  overflow-y: auto;
+  background: #1a1a2e;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 0.85em;
+  border: 1px solid #0f3460;
+}
+
+.message-item {
+  padding: 4px 0;
+  border-bottom: 1px solid #0f3460;
+}
+
+.message-item:last-child {
+  border-bottom: none;
+}
+
+.message-item .msg-player {
+  color: #e94560;
+  font-weight: 600;
+}
+
+.message-item .msg-time {
+  color: #555;
+  font-size: 0.8em;
+  margin-left: 8px;
+}
+
+.message-item.msg-action {
+  color: #f39c12;
+  font-style: italic;
+}
+
+.message-item.msg-system {
+  color: #2ecc71;
+  font-weight: 600;
+}
+
+/* =========================================================================
+   NOTIFICACIONES TOAST
+   ========================================================================= */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toast {
+  background: #16213e;
+  color: #eaeaea;
+  padding: 12px 18px;
+  border-radius: 8px;
+  border-left: 4px solid #e94560;
+  font-size: 0.9em;
+  animation: slideIn 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* =========================================================================
+   MODAL GAME OVER
+   ========================================================================= */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.modal-overlay.active {
+  display: flex;
+}
+
+.modal {
+  background: #16213e;
+  border: 2px solid #e94560;
+  border-radius: 16px;
+  padding: 30px;
+  text-align: center;
+  max-width: 400px;
+  width: 90%;
+}
+
+.modal h2 {
+  font-size: 1.8em;
+  margin-bottom: 12px;
+}
+
+.modal .winner-text {
+  font-size: 1.2em;
+  margin-bottom: 20px;
+  color: #a0a0b0;
+}
+
+.modal .winner-text span {
+  color: #e94560;
+  font-weight: 700;
+}
+
+/* =========================================================================
+   RESPONSIVE
+   ========================================================================= */
+@media (max-width: 600px) {
+  .main-container {
+    padding: 10px;
+    gap: 12px;
+  }
+
+  .room-code {
+    font-size: 2em;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .btn {
+    padding: 8px 14px;
+    font-size: 0.85em;
+  }
+
+  canvas#boardCanvas {
+    max-width: 100%;
+  }
+}
+
+/* =========================================================================
+   ESTADO DE CONEXIÓN
+   ========================================================================= */
+.connection-status {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  font-size: 0.7em;
+  padding: 4px 10px;
+  border-radius: 12px;
+  z-index: 100;
+}
+
+.connection-status.online {
+  background: #2ecc71;
+  color: #1a1a2e;
+}
+
+.connection-status.offline {
+  background: #e74c3c;
+  color: #fff;
+}
+
+/* =========================================================================
+   SCROLLBAR
+   ========================================================================= */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #0f3460;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #e94560;
+}

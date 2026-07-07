@@ -1,0 +1,23 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomCode": {
+        ".read": true,
+        ".write": true,
+        "players": {
+          "$playerId": {
+            ".validate": "newData.hasChildren(['name', 'connected', 'joinedAt'])"
+          }
+        },
+        "gameState": {
+          ".validate": "newData.hasChildren(['phase', 'currentTurn', 'turnOrder'])"
+        },
+        "messages": {
+          "$messageId": {
+            ".validate": "newData.hasChildren(['playerId', 'text', 'timestamp', 'type'])"
+          }
+        }
+      }
+    }
+  }
+}

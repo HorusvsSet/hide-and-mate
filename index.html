@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hide&Mate - Multijugador Online</title>
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- Firebase SDK (CDN) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+  <!-- Configuración de Firebase (RELLENAR CON TUS DATOS) -->
+  <script src="js/firebase-config.js"></script>
+
+  <!-- Infraestructura multijugador -->
+  <script src="js/game-infrastructure.js"></script>
+
+  <!-- Lógica del juego -->
+  <script src="js/game-logic.js"></script>
+</head>
+<body>
+
+  <!-- ================================================================= -->
+  <!-- HEADER                                                             -->
+  <!-- ================================================================= -->
+  <header class="header">
+    <h1>♛ Hide&Mate</h1>
+    <p class="subtitle">Reina: movimientos limitados. Reyes: siempre saben dónde está la reina. Niebla de guerra.</p>
+  </header>
+
+  <!-- ================================================================= -->
+  <!-- CONTENEDOR PRINCIPAL                                               -->
+  <!-- ================================================================= -->
+  <div class="main-container">
+
+    <!-- ============================================================= -->
+    <!-- PANTALLA 1: LOBBY (crear / unirse a sala)                     -->
+    <!-- ============================================================= -->
+    <div id="screen-lobby" class="screen active">
+      <div class="card">
+        <h2>🎮 Bienvenido</h2>
+        <p style="text-align:center; color:#a0a0b0; margin-bottom:16px;">
+          Crea una sala o únete a una existente para jugar.
+        </p>
+
+        <div class="input-group">
+          <label>Tu nombre</label>
+          <input type="text" id="playerName" placeholder="Ej: Alice" maxlength="15" />
+        </div>
+
+        <button class="btn btn-primary btn-block" onclick="crearSala()">
+          🏠 Crear Sala Nueva
+        </button>
+
+        <div style="margin: 16px 0; text-align: center; color: #555;">— o —</div>
+
+        <div class="input-group">
+          <label>Código de sala</label>
+          <input type="text" id="roomCodeInput" placeholder="Ej: ABCD" maxlength="4" style="text-transform:uppercase;" />
+        </div>
+
+        <button class="btn btn-secondary btn-block" onclick="unirseASala()">
+          🔗 Unirse a Sala
+        </button>
+
+        <p id="lobby-error" style="color:#e74c3c; text-align:center; margin-top:12px; display:none;"></p>
+      </div>
+    </div>
+
+    <!-- ============================================================= -->
+    <!-- PANTALLA 2: SALA DE ESPERA (antes de empezar)                 -->
+    <!-- ============================================================= -->
+    <div id="screen-waiting" class="screen">
+      <div class="card">
+        <h2>⏳ Sala de Espera</h2>
+
+        <div class="room-code-display">
+          <div class="room-code-label">Código de la sala</div>
+          <div class="room-code" id="display-room-code">----</div>
+          <p style="color:#a0a0b0; font-size:0.8em; margin-top:4px;">
+            Comparte este código con tus amigos
+          </p>
+        </div>
+
+        <h3 style="margin-top:16px;">👥 Jugadores (<span id="player-count">0</span>)</h3>
+        <ul class="player-list" id="player-list">
+          <!-- Se rellena dinámicamente -->
+        </ul>
+
+        <div style="display:flex; gap:10px; margin-top:12px;">
+          <button class="btn btn-primary btn-block" id="btn-start-game" onclick="iniciarPartida()" disabled>
+            ▶ Iniciar Partida
+          </button>
+          <button class="btn btn-danger" onclick="salirDeSala()">
+            Salir
+          </button>
+        </div>
+
+        <p style="color:#a0a0b0; font-size:0.75em; text-align:center; margin-top:8px;">
+          Mínimo 2 jugadores. El anfitrión (👑) inicia la partida.
+        </p>
+      </div>
+    </div>
+
+    <!-- ============================================================= -->
+    <!-- PANTALLA 3: JUEGO                                              -->
+    <!-- ============================================================= -->
+    <div id="screen-game" class="screen">
+
+      <!-- Indicador de turno -->
+      <div class="turn-indicator waiting" id="turn-indicator">
+        Esperando turno...
+      </div>
+
+      <!-- Info de partida -->
+      <div style="display:flex; gap:20px; flex-wrap:wrap; justify-content:center; font-size:0.85em;">
+        <span>🎯 Ronda: <b id="info-ronda">1</b></span>
+        <span>♛ Movs reina: <b id="info-movs">0/15</b></span>
+        <span>♚ Reyes vivos: <b id="info-reyes-vivos">0</b></span>
+      </div>
+
+      <!-- Tablero -->
+      <div class="board-container">
+        <canvas id="boardCanvas" width="480" height="480"></canvas>
+        <div class="board-info">
+          <span>Ronda: <span id="info-turno">1</span></span>
+          <span>Movs: <span id="info-movs-board">0</span>/<span id="info-max-movs">15</span></span>
+          <span>Reyes: <span id="info-reyes-board">0</span></span>
+        </div>
+      </div>
+
+      <!-- Puntuaciones -->
+      <div class="card" style="margin-top:8px;">
+        <h3>🏆 Puntuaciones</h3>
+        <div id="score-list" style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
+          <span style="color:#a0a0b0;">Sin puntuaciones aún</span>
+        </div>
+      </div>
+
+      <!-- Log de mensajes -->
+      <div class="card" style="margin-top:8px;">
+        <h3>📜 Historial</h3>
+        <div class="message-log" id="message-log">
+          <p style="color:#555;">Esperando eventos...</p>
+        </div>
+      </div>
+
+      <!-- Botón para salir -->
+      <button class="btn btn-danger" onclick="salirDeSala()" style="margin-top:8px;">
+        🚪 Salir de la partida
+      </button>
+    </div>
+
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- MODAL DE FIN DE PARTIDA                                            -->
+  <!-- ================================================================= -->
+  <div class="modal-overlay" id="modal-gameover">
+    <div class="modal">
+      <h2 id="modal-title">🏆</h2>
+      <p class="winner-text" id="modal-text"></p>
+      <div id="modal-scores" style="margin:12px 0; font-size:0.9em;"></div>
+      <button class="btn btn-primary" id="btn-new-round" onclick="nuevaRonda()" style="display:none;">🔄 Nueva Ronda</button>
+      <button class="btn btn-secondary" onclick="volverAlLobby()" style="margin-top:8px;">Volver al Lobby</button>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- TOAST DE NOTIFICACIONES                                            -->
+  <!-- ================================================================= -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- ================================================================= -->
+  <!-- INDICADOR DE CONEXIÓN                                              -->
+  <!-- ================================================================= -->
+  <div class="connection-status offline" id="connection-status">
+    🔴 Sin conexión
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- SCRIPT PRINCIPAL (controla la UI)                                  -->
+  <!-- ================================================================= -->
+  <script>
+    /**
+     * ============================================================
+     * CONTROLADOR DE LA INTERFAZ DE USUARIO
+     * ============================================================
+     * 
+     * Este código conecta la infraestructura (GameInfrastructure)
+     * y la lógica del juego (JuegoEscondite) con la interfaz HTML.
+     * 
+     * NO MODIFICA las reglas del juego. Solo maneja:
+     *   - Navegación entre pantallas (lobby → espera → juego)
+     *   - Renderizado del tablero en el canvas
+     *   - Input del usuario (clics en el tablero)
+     *   - Notificaciones y mensajes
+     */
+
+    // =========================================================================
+    // INICIALIZACIÓN
+    // =========================================================================
+
+    /** @type {GameInfrastructure} */
+    let gameInfra = null;
+
+    /** @type {JuegoEscondite} */
+    let juego = null;
+
+    /** Casilla seleccionada por el jugador (para mover) */
+    let casillaSeleccionada = null;
+
+    /** Tamaño en píxeles del canvas */
+    const CANVAS_SIZE = 480;
+    const TILE_SIZE = CANVAS_SIZE / 8;
+
+    // Esperar a que el DOM esté listo
+    document.addEventListener('DOMContentLoaded', () => {
+      try {
+        gameInfra = new GameInfrastructure();
+        configurarEventosInfraestructura();
+        console.log('✅ Sistema inicializado. ¡Listo para jugar!');
+      } catch (error) {
+        mostrarErrorEnPantalla('lobby-error', error.message);
+      }
+    });
+
+    // =========================================================================
+    // NAVEGACIÓN ENTRE PANTALLAS
+    // =========================================================================
+
+    function mostrarPantalla(pantalla) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      const el = document.getElementById(`screen-${pantalla}`);
+      if (el) el.classList.add('active');
+    }
+
+    function ocultarError() {
+      const el = document.getElementById('lobby-error');
+      if (el) el.style.display = 'none';
+    }
+
+    function mostrarError(mensaje) {
+      const el = document.getElementById('lobby-error');
+      if (el) {
+        el.textContent = mensaje;
+        el.style.display = 'block';
+      }
+    }
+
+    function mostrarErrorEnPantalla(id, mensaje) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = mensaje;
+        el.style.display = 'block';
+      }
+    }
+
+    // =========================================================================
+    // CREAR / UNIRSE A SALA
+    // =========================================================================
+
+    async function crearSala() {
+      ocultarError();
+      const nombre = document.getElementById('playerName').value.trim();
+
+      if (!nombre) {
+        mostrarError('Por favor, escribe tu nombre.');
+        return;
+      }
+
+      try {
+        const { roomCode } = await gameInfra.createRoom(nombre);
+        mostrarPantalla('waiting');
+        actualizarSalaEspera(roomCode);
+        notificar(`✅ Sala "${roomCode}" creada`);
+      } catch (error) {
+        mostrarError(error.message);
+      }
+    }
+
+    async function unirseASala() {
+      ocultarError();
+      const nombre = document.getElementById('playerName').value.trim();
+      const codigo = document.getElementById('roomCodeInput').value.trim().toUpperCase();
+
+      if (!nombre) {
+        mostrarError('Por favor, escribe tu nombre.');
+        return;
+      }
+      if (!codigo) {
+        mostrarError('Por favor, introduce el código de la sala.');
+        return;
+      }
+
+      try {
+        await gameInfra.joinRoom(codigo, nombre);
+        mostrarPantalla('waiting');
+        actualizarSalaEspera(codigo);
+        notificar(`✅ Te has unido a "${codigo}"`);
+      } catch (error) {
+        mostrarError(error.message);
+      }
+    }
+
+    function salirDeSala() {
+      if (juego) {
+        juego = null;
+      }
+      if (gameInfra) {
+        gameInfra.leaveRoom();
+      }
+      casillaSeleccionada = null;
+      mostrarPantalla('lobby');
+      notificar('Has salido de la sala');
+    }
+
+    function volverAlLobby() {
+      document.getElementById('modal-gameover').classList.remove('active');
+      salirDeSala();
+    }
+
+    // =========================================================================
+    // SALA DE ESPERA
+    // =========================================================================
+
+    function actualizarSalaEspera(roomCode) {
+      document.getElementById('display-room-code').textContent = roomCode;
+      actualizarListaJugadores();
+
+      // Mostrar/ocultar botón de iniciar según si es host
+      const btnStart = document.getElementById('btn-start-game');
+      btnStart.disabled = !gameInfra.isHost || gameInfra.playerCount < 2;
+
+      if (gameInfra.isHost) {
+        btnStart.textContent = gameInfra.playerCount >= 2
+          ? '▶ Iniciar Partida'
+          : '▶ Iniciar (mínimo 2 jugadores)';
+      } else {
+        btnStart.textContent = '⏳ Esperando al anfitrión...';
+      }
+    }
+
+    function actualizarListaJugadores() {
+      const lista = document.getElementById('player-list');
+      const count = document.getElementById('player-count');
+
+      if (!gameInfra) return;
+
+      const players = gameInfra._players;
+      const playerIds = Object.keys(players);
+
+      count.textContent = playerIds.length;
+
+      lista.innerHTML = playerIds.map(pid => {
+        const p = players[pid];
+        const esHost = p.isHost || pid === gameInfra.roomCode ? gameInfra._players[pid]?.isHost : false;
+        const soyYo = pid === gameInfra.playerId;
+        const online = p.connected;
+
+        let badges = '';
+        if (esHost) badges += '<span class="player-badge badge-host">Anfitrión</span> ';
+        if (soyYo) badges += '<span class="player-badge badge-you">Tú</span> ';
+
+        return `
+          <li class="player-item">
+            <div style="display:flex;align-items:center;">
+              <span class="player-status ${online ? 'status-online' : 'status-offline'}"></span>
+              <span class="player-name">${p.name || 'Jugador'}</span>
+            </div>
+            <div>${badges}</div>
+          </li>
+        `;
+      }).join('');
+
+      // Actualizar botón de inicio
+      const btnStart = document.getElementById('btn-start-game');
+      if (btnStart && gameInfra) {
+        btnStart.disabled = !gameInfra.isHost || playerIds.length < 2;
+        btnStart.textContent = gameInfra.isHost
+          ? (playerIds.length >= 2 ? '▶ Iniciar Partida' : '▶ Iniciar (mínimo 2 jugadores)')
+          : '⏳ Esperando al anfitrión...';
+      }
+    }
+
+    // =========================================================================
+    // INICIAR PARTIDA
+    // =========================================================================
+
+    async function iniciarPartida() {
+      if (!gameInfra || !gameInfra.isHost) return;
+
+      try {
+        juego = new JuegoEscondite(gameInfra);
+        configurarEventosJuego();
+        await juego.inicializarJuego();
+        mostrarPantalla('game');
+        dibujarTablero();
+        notificar('🎮 ¡Partida iniciada!');
+      } catch (error) {
+        mostrarErrorEnPantalla('lobby-error', error.message);
+        console.error('Error al iniciar:', error);
+      }
+    }
+
+    // =========================================================================
+    // CONFIGURAR EVENTOS DE LA INFRAESTRUCTURA
+    // =========================================================================
+
+    function configurarEventosInfraestructura() {
+      // Conexión
+      gameInfra.on('connectionChange', (connected) => {
+        const status = document.getElementById('connection-status');
+        if (status) {
+          status.textContent = connected ? '🟢 Conectado' : '🔴 Sin conexión';
+          status.className = 'connection-status ' + (connected ? 'online' : 'offline');
+        }
+      });
+
+      // Jugador se une
+      gameInfra.on('playerJoin', (player) => {
+        notificar(`👤 ${player.name} se ha unido`);
+        actualizarListaJugadores();
+      });
+
+      // Jugador se va
+      gameInfra.on('playerLeave', (player) => {
+        notificar(`👋 ${player.name} se ha ido`);
+        actualizarListaJugadores();
+      });
+
+      // Partida iniciada (jugadores que no son host)
+      gameInfra.on('gameStart', (gameState) => {
+        if (!juego) {
+          juego = new JuegoEscondite(gameInfra);
+          configurarEventosJuego();
+          // Forzar procesado del estado inicial
+          juego._procesarEstado(gameState);
+        }
+        mostrarPantalla('game');
+        dibujarTablero();
+        notificar('🎮 ¡La partida ha comenzado!');
+      });
+
+      // Mensajes
+      gameInfra.on('message', (msg) => {
+        agregarMensajeAlLog(msg);
+      });
+    }
+
+    // =========================================================================
+    // CONFIGURAR EVENTOS DEL JUEGO
+    // =========================================================================
+
+    function configurarEventosJuego() {
+      juego.on('boardChange', () => {
+        dibujarTablero();
+        actualizarInfoJuego();
+      });
+
+      juego.on('turnChange', () => {
+        actualizarIndicadorTurno();
+        dibujarTablero();
+      });
+
+      juego.on('myTurn', () => {
+        notificar('🎯 ¡Es tu turno!');
+        actualizarIndicadorTurno();
+        dibujarTablero();
+      });
+
+      juego.on('reyCapturado', (playerId) => {
+        const nombre = gameInfra._getPlayerName(playerId);
+        notificar(`💀 ¡El rey de ${nombre} ha sido capturado!`);
+      });
+
+      juego.on('gameOver', ({ winner, razon }) => {
+        mostrarGameOver(winner, razon);
+      });
+
+      juego.on('scoreChange', (puntuaciones) => {
+        actualizarPuntuaciones(puntuaciones);
+      });
+
+      juego.on('roundStart', (ronda) => {
+        notificar(`🔄 ¡Ronda ${ronda} iniciada!`);
+        actualizarInfoJuego();
+      });
+    }
+
+    // =========================================================================
+    // RENDERIZADO DEL TABLERO (CANVAS)
+    // =========================================================================
+
+    function dibujarTablero() {
+      const canvas = document.getElementById('boardCanvas');
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      const size = CANVAS_SIZE;
+      const ts = TILE_SIZE;
+
+      // Obtener tablero desde la perspectiva de este jugador
+      const board = juego ? juego.obtenerTableroVisible() : null;
+
+      // Fondo oscuro general
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, size, size);
+
+      // Si no hay juego aún, mostrar tablero vacío
+      if (!board) {
+        for (let row = 0; row < 8; row++) {
+          for (let col = 0; col < 8; col++) {
+            const esClaro = (row + col) % 2 === 0;
+            ctx.fillStyle = esClaro ? '#f0d9b5' : '#b58863';
+            ctx.fillRect(col * ts, row * ts, ts, ts);
+          }
+        }
+        ctx.fillStyle = '#a0a0b0';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Esperando inicio...', size / 2, size / 2);
+        return;
+      }
+
+      // Sets para búsqueda rápida
+      const setBloqueadas = new Set(board.blockedTiles.map(b => `${b.row},${b.col}`));
+      const setVisibles = new Set((board.visibleTiles || []).map(v => `${v.row},${v.col}`));
+      const reyesEnTablero = {};
+      Object.entries(board.kings).forEach(([pid, pos]) => {
+        reyesEnTablero[`${pos.row},${pos.col}`] = pid;
+      });
+
+      const soyRey = juego.miRol === 'rey';
+      const soyReina = juego.miRol === 'reina';
+
+      // Dibujar casillas
+      for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+          const x = col * ts;
+          const y = row * ts;
+          const esClaro = (row + col) % 2 === 0;
+          const key = `${row},${col}`;
+
+          // Color base del tablero de ajedrez
+          const color = esClaro ? '#f0d9b5' : '#b58863';
+          ctx.fillStyle = color;
+          ctx.fillRect(x, y, ts, ts);
+
+          // --- NIEBLA DE GUERRA ---
+          // Tanto la reina como los reyes solo ven sus visibleTiles
+          // (para la reina: 8 dir. de ataque; para el rey: 8 dir. bloqueadas por muros)
+          const fueraDeVision = !setVisibles.has(key);
+
+          if (fueraDeVision) {
+            // Casilla fuera de la línea de visión: oscurecer
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+            ctx.fillRect(x, y, ts, ts);
+          }
+
+          // Resaltar casilla seleccionada (solo si está en visión)
+          if (!fueraDeVision && casillaSeleccionada && casillaSeleccionada.row === row && casillaSeleccionada.col === col) {
+            ctx.fillStyle = 'rgba(233, 69, 96, 0.5)';
+            ctx.fillRect(x, y, ts, ts);
+          }
+
+          // Borde sutil de la casilla
+          ctx.strokeStyle = fueraDeVision ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.15)';
+          ctx.lineWidth = 0.5;
+          ctx.strokeRect(x, y, ts, ts);
+
+          // --- CASILLA BLOQUEADA ---
+          // La reina ve todas las bloqueadas.
+          // Los reyes solo ven las que han descubierto (ya filtradas en board.blockedTiles).
+          if (setBloqueadas.has(key) && !fueraDeVision) {
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillRect(x + 4, y + 4, ts - 8, ts - 8);
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x + 10, y + 10);
+            ctx.lineTo(x + ts - 10, y + ts - 10);
+            ctx.moveTo(x + ts - 10, y + 10);
+            ctx.lineTo(x + 10, y + ts - 10);
+            ctx.stroke();
+          }
+
+          // --- REINA ---
+          // La reina siempre se ve a sí misma.
+          // Los reyes solo la ven si está en su LOS (board.queen != null).
+          if (board.queen && board.queen.row === row && board.queen.col === col) {
+            dibujarPieza(ctx, x + ts / 2, y + ts / 2, ts * 0.38, '#f1c40f', '♛');
+          }
+
+          // --- REYES ---
+          // board.kings ya está filtrado: solo contiene los visibles para este jugador
+          if (reyesEnTablero[key]) {
+            const pid = reyesEnTablero[key];
+            const capturado = juego.reyesCapturados.includes(pid);
+            const soyYo = pid === gameInfra.playerId;
+            const colorRey = capturado ? '#7f8c8d' : (soyYo ? '#2ecc71' : '#3498db');
+            const simbolo = soyYo ? '♚' : '♚';
+            dibujarPieza(ctx, x + ts / 2, y + ts / 2, ts * 0.32, colorRey, simbolo);
+          }
+        }
+      }
+
+      // Dibujar coordenadas
+      ctx.fillStyle = '#a0a0b0';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      const letras = 'abcdefgh';
+      for (let i = 0; i < 8; i++) {
+        ctx.fillText(letras[i], i * ts + ts / 2, size - 4);
+        ctx.fillText(8 - i, size - 10, i * ts + ts / 2 + 4);
+      }
+    }
+
+    function dibujarPieza(ctx, cx, cy, radio, color, simbolo) {
+      // Sombra
+      ctx.beginPath();
+      ctx.arc(cx + 2, cy + 2, radio, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fill();
+
+      // Círculo principal
+      ctx.beginPath();
+      ctx.arc(cx, cy, radio, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Símbolo
+      ctx.fillStyle = '#fff';
+      ctx.font = `${radio * 1.5}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(simbolo, cx, cy + 1);
+    }
+
+    // =========================================================================
+    // INTERACCIÓN CON EL TABLERO (CLICS)
+    // =========================================================================
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.getElementById('boardCanvas');
+      if (canvas) {
+        canvas.addEventListener('click', manejarClickTablero);
+      }
+    });
+
+    function manejarClickTablero(event) {
+      if (!juego || juego.eliminado) return;
+      if (!gameInfra.turn.isMyTurn()) return;
+
+      const canvas = document.getElementById('boardCanvas');
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = CANVAS_SIZE / rect.width;
+      const scaleY = CANVAS_SIZE / rect.height;
+
+      const mouseX = (event.clientX - rect.left) * scaleX;
+      const mouseY = (event.clientY - rect.top) * scaleY;
+
+      const col = Math.floor(mouseX / TILE_SIZE);
+      const row = Math.floor(mouseY / TILE_SIZE);
+
+      if (row < 0 || row >= 8 || col < 0 || col >= 8) return;
+
+      manejarClickCasilla(row, col);
+    }
+
+    async function manejarClickCasilla(row, col) {
+      // Si no hay casilla seleccionada, seleccionar la pieza del jugador
+      if (!casillaSeleccionada) {
+        if (juego.miRol === 'reina') {
+          if (juego.posicionReina && juego.posicionReina.row === row && juego.posicionReina.col === col) {
+            casillaSeleccionada = { row, col };
+            dibujarTablero();
+            notificar('♛ Reina seleccionada. Haz clic en el destino.');
+          }
+        } else if (juego.miRol === 'rey') {
+          const miPos = juego.posicionesReyes[gameInfra.playerId];
+          if (miPos && miPos.row === row && miPos.col === col) {
+            casillaSeleccionada = { row, col };
+            dibujarTablero();
+            notificar('♚ Rey seleccionado. Haz clic en una casilla adyacente.');
+          }
+        }
+        return;
+      }
+
+      // Ya hay casilla seleccionada → intentar mover a (row, col)
+      const destino = { row, col };
+      casillaSeleccionada = null; // Limpiar selección
+      dibujarTablero();
+
+      try {
+        if (juego.miRol === 'reina') {
+          const resultado = await juego.moverReina(destino.row, destino.col);
+          if (!resultado.valido) {
+            notificar(`⚠️ ${resultado.razon}`);
+          }
+        } else if (juego.miRol === 'rey') {
+          const resultado = await juego.moverRey(destino.row, destino.col);
+          if (!resultado.valido) {
+            notificar(`⚠️ ${resultado.razon}`);
+          }
+        }
+      } catch (error) {
+        notificar(`❌ ${error.message}`);
+      }
+
+      dibujarTablero();
+    }
+
+    // =========================================================================
+    // ACTUALIZAR INDICADORES
+    // =========================================================================
+
+    function actualizarIndicadorTurno() {
+      const indicador = document.getElementById('turn-indicator');
+      if (!indicador || !juego) return;
+
+      if (juego.eliminado) {
+        indicador.textContent = '💀 Has sido capturado. Eres espectador.';
+        indicador.className = 'turn-indicator eliminated';
+        return;
+      }
+
+      const turnoDe = gameInfra._currentTurn;
+      const esMiTurno = gameInfra.turn.isMyTurn();
+
+      if (esMiTurno) {
+        if (juego.miRol === 'reina') {
+          const quedan = juego.maxMovimientosReina - juego.movimientosReina;
+          indicador.textContent = `🎯 ¡TU TURNO! ♛ Reina — Te quedan ${quedan} movimientos`;
+        } else {
+          indicador.textContent = '🎯 ¡TU TURNO! ♚ Rey — Haz clic en tu pieza y luego en el destino';
+        }
+        indicador.className = 'turn-indicator my-turn';
+      } else {
+        const nombre = gameInfra._getPlayerName(turnoDe);
+        const rol = turnoDe === juego.idReina ? '♛ Reina' : '♚ Rey';
+        indicador.textContent = `⏳ Turno de: ${nombre} (${rol})`;
+        indicador.className = 'turn-indicator waiting';
+      }
+    }
+
+    function actualizarInfoJuego() {
+      if (!juego) return;
+      document.getElementById('info-ronda').textContent = juego.ronda || 1;
+      document.getElementById('info-movs').textContent = `${juego.movimientosReina}/${juego.maxMovimientosReina}`;
+      document.getElementById('info-turno').textContent = juego.ronda || 1;
+      document.getElementById('info-movs-board').textContent = juego.movimientosReina;
+      document.getElementById('info-max-movs').textContent = juego.maxMovimientosReina;
+
+      const reyesVivos = Object.keys(juego.posicionesReyes).filter(
+        pid => !juego.reyesCapturados.includes(pid)
+      ).length;
+      document.getElementById('info-reyes-vivos').textContent = reyesVivos;
+      document.getElementById('info-reyes-board').textContent = reyesVivos;
+      actualizarPuntuaciones(juego.puntuaciones);
+    }
+
+    // =========================================================================
+    // LOG DE MENSAJES
+    // =========================================================================
+
+    function agregarMensajeAlLog(msg) {
+      const log = document.getElementById('message-log');
+      if (!log) return;
+
+      // Limpiar placeholder
+      if (log.querySelector('p') && log.querySelector('p').textContent === 'Esperando eventos...') {
+        log.innerHTML = '';
+      }
+
+      const tipo = msg.type || 'chat';
+      const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
+
+      const div = document.createElement('div');
+      div.className = `message-item msg-${tipo}`;
+      div.innerHTML = `
+        <span class="msg-player">${msg.playerName || 'Sistema'}</span>
+        ${msg.text}
+        <span class="msg-time">${time}</span>
+      `;
+
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    // =========================================================================
+    // GAME OVER
+    // =========================================================================
+
+    function actualizarPuntuaciones(puntuaciones) {
+      const el = document.getElementById('score-list');
+      if (!el || !puntuaciones) return;
+      const entries = Object.entries(puntuaciones);
+      if (entries.length === 0) {
+        el.innerHTML = '<span style="color:#a0a0b0;">Sin puntuaciones aún</span>';
+        return;
+      }
+      el.innerHTML = entries.map(([pid, pts]) => {
+        const nombre = gameInfra._getPlayerName(pid);
+        return `<span style="background:#0f3460;padding:4px 10px;border-radius:6px;">${nombre}: <b>${pts} pts</b></span>`;
+      }).join('');
+    }
+
+    async function nuevaRonda() {
+      document.getElementById('modal-gameover').classList.remove('active');
+      try {
+        await juego.nuevaRonda();
+        dibujarTablero();
+        actualizarInfoJuego();
+        notificar(`🔄 ¡Ronda ${juego.ronda} iniciada!`);
+      } catch (e) {
+        notificar(`❌ ${e.message}`);
+      }
+    }
+
+    function mostrarGameOver(winner, razon) {
+      const modal = document.getElementById('modal-gameover');
+      const title = document.getElementById('modal-title');
+      const text = document.getElementById('modal-text');
+      const scores = document.getElementById('modal-scores');
+      const btnRound = document.getElementById('btn-new-round');
+
+      if (winner === 'reina') {
+        title.textContent = '👑 ¡La Reina ha ganado!';
+        text.innerHTML = `<span>${gameInfra._getPlayerName(juego.idReina)}</span> ha capturado a todos los reyes.<br><small>${razon}</small>`;
+      } else {
+        title.textContent = '🏰 ¡Los Reyes han ganado!';
+        text.innerHTML = `La reina gastó todos sus movimientos.<br><small>${razon}</small>`;
+      }
+
+      // Mostrar puntuaciones
+      if (juego.puntuaciones && Object.keys(juego.puntuaciones).length > 0) {
+        scores.innerHTML = '<b>Puntuaciones:</b><br>' + Object.entries(juego.puntuaciones).map(([pid, pts]) =>
+          `${gameInfra._getPlayerName(pid)}: <b>${pts} pts</b>`
+        ).join('<br>');
+      }
+
+      // Botón de nueva ronda (solo host)
+      btnRound.style.display = gameInfra.isHost ? 'block' : 'none';
+
+      modal.classList.add('active');
+    }
+
+    // =========================================================================
+    // NOTIFICACIONES TOAST
+    // =========================================================================
+
+    function notificar(mensaje) {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = mensaje;
+      container.appendChild(toast);
+
+      // Eliminar tras 3 segundos
+      setTimeout(() => {
+        toast.remove();
+      }, 3000);
+    }
+
+    // =========================================================================
+    // ATALLO DE TECLADO: ESC para limpiar selección
+    // =========================================================================
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        casillaSeleccionada = null;
+        dibujarTablero();
+        notificar('Selección cancelada');
+      }
+    });
+
+    console.log('✅ UI inicializada correctamente');
+  </script>
+
+</body>
+</html>
