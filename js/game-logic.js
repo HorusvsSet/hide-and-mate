@@ -86,15 +86,19 @@ class JuegoEscondite {
     if (!this.game.isHost) throw new Error('Solo el anfitrión.');
     const jugadores = Object.keys(this.game._players);
     if (jugadores.length < 2) throw new Error('Mínimo 2 jugadores.');
-    const idReina = jugadores[0], idsReyes = jugadores.slice(1);
+    const idReina = jugadores[0];
+    let idsReyes = jugadores.slice(1);
+    // Orden aleatorio de reyes cada ronda
+    this._barajar(idsReyes);
     const maxMovs = this.MOVIMIENTOS_POR_JUGADORES[jugadores.length] || 15;
     const bloqueadas = this._generarBloqueadas();
-    const posReina = { row: 7, col: 7 };
-    const posReyes = this._colocarReyes(idsReyes, posReina, bloqueadas);
+    // Colocar reyes en 3 esquinas, reina en la 4ª
+    const { posReina, posReyes } = this._colocarEnEsquinas(idsReyes);
     const discoveredBlocks = {};
-    [idReina, ...idsReyes].forEach(pid => {
-      const pos = pid === idReina ? posReina : posReyes[pid];
-      discoveredBlocks[pid] = this._murosEnLOS(pos, bloqueadas);
+    // Reyes: solo ven adyacentes, reina: LOS completo
+    discoveredBlocks[idReina] = this._murosEnLOS(posReina, bloqueadas);
+    idsReyes.forEach(pid => {
+      discoveredBlocks[pid] = this._murosAdyacentes(posReyes[pid], bloqueadas);
     });
     const board = { size: 8, queen: posReina, kings: posReyes, blockedTiles: bloqueadas, discoveredBlocks };
     const puntuaciones = this.game.vars.get('puntuaciones', {});
@@ -106,7 +110,9 @@ class JuegoEscondite {
     await this.game.vars.set('reyesCapturados', []);
     await this.game.vars.set('ronda', this.ronda || 1);
     await this.game.vars.set('puntuaciones', puntuaciones);
-    await this.game.startGame({ board, turnOrder: [idReina, ...idsReyes], currentTurn: idReina,
+    // Orden de turno: reina primero, luego reyes en orden aleatorio
+    const turnOrder = [idReina, ...idsReyes];
+    await this.game.startGame({ board, turnOrder, currentTurn: idReina,
       objects: { board }, custom: { idReina, movimientosReina:0, maxMovimientosReina:maxMovs, reyesCapturados:[], ronda:this.ronda||1, puntuaciones } });
     this.posicionReina = posReina; this.posicionesReyes = posReyes; this.casillasBloqueadas = bloqueadas;
     this.idReina = idReina; this.miRol = this.game.playerId === idReina ? 'reina' : 'rey';
@@ -189,13 +195,35 @@ class JuegoEscondite {
     return todos.filter(m=>s.has(`${m.row},${m.col}`)).map(m=>`${m.row},${m.col}`);
   }
 
+  // Visión del rey: solo casillas adyacentes (distancia 1, 8 direcciones)
+  _calcularLOSRey(origen) {
+    if (!origen) return [];
+    const v = [{row:origen.row, col:origen.col}];
+    for (const [dr,dc] of [[-1,0],[-1,1],[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1]]) {
+      const r=origen.row+dr, c=origen.col+dc;
+      if (r>=0&&r<8&&c>=0&&c<8) v.push({row:r,col:c});
+    }
+    return v;
+  }
+
+  _murosAdyacentes(origen, todos) {
+    if (!origen) return [];
+    const s = new Set();
+    for (const [dr,dc] of [[-1,0],[-1,1],[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1]]) {
+      const r=origen.row+dr, c=origen.col+dc;
+      if (r>=0&&r<8&&c>=0&&c<8) s.add(`${r},${c}`);
+    }
+    return todos.filter(m=>s.has(`${m.row},${m.col}`)).map(m=>`${m.row},${m.col}`);
+  }
+
   // ============= TABLERO VISIBLE =============
 
   obtenerTableroVisible() {
     const board = { size:8, queen:null, kings:{}, blockedTiles:[], visibleTiles:[] };
     let miPos = this.miRol==='reina' ? this.posicionReina : this.posicionesReyes[this.game.playerId];
     if (!miPos) return board;
-    const los = this._calcularLOS(miPos);
+    // Reina: línea completa. Reyes: solo adyacentes.
+    const los = this.miRol === 'reina' ? this._calcularLOS(miPos) : this._calcularLOSRey(miPos);
     board.visibleTiles = los;
     const sLos = new Set(los.map(v=>`${v.row},${v.col}`));
     // Muros: descubiertos O en LOS actual
@@ -365,6 +393,21 @@ class JuegoEscondite {
   // ============= UTILIDADES =============
 
   _barajar(a) { for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} }
+
+  _colocarEnEsquinas(idsReyesUV) {
+    // Reyes en 3 esquinas (aleatorio qué rey en cuál), reina en la 4ª esquina
+    const esquinas = [
+      {row:0, col:0}, {row:0, col:7}, {row:7, col:0}, {row:7, col:7}
+    ];
+    this._barajar(esquinas);
+    const posReina = esquinas[0];
+    const posReyes = {};
+    idsReyesUV.forEach((id, i) => {
+      posReyes[id] = esquinas[i + 1];
+    });
+    return { posReina, posReyes };
+  }
+
   aNotacion(r,c) { return `${'abcdefgh'[c]}${8-r}`; }
   desdeNotacion(n) { return {row:8-parseInt(n[1]),col:'abcdefgh'.indexOf(n[0].toLowerCase())}; }
 }
