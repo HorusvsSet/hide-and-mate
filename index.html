@@ -88,6 +88,13 @@
           <!-- Se rellena dinámicamente -->
         </ul>
 
+        <!-- Ranking -->
+        <div id="ranking-container" style="display:none; margin-top:12px;">
+          <h3 style="margin-top:8px;">🏆 Ranking</h3>
+          <div id="ranking-list" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+          </div>
+        </div>
+
         <div style="display:flex; gap:8px; margin-top:8px;">
           <button class="btn btn-secondary btn-block" onclick="refrescarJugadoresAhora()" style="font-size:0.8em;">
             👥 Refrescar lista
@@ -144,33 +151,12 @@
         </div>
       </div>
 
-      <!-- Log de mensajes -->
-      <div class="card" style="margin-top:8px;">
-        <h3>📜 Historial</h3>
-        <div class="message-log" id="message-log">
-          <p style="color:#555;">Esperando eventos...</p>
-        </div>
-      </div>
-
       <!-- Botón para salir -->
       <button class="btn btn-danger" onclick="salirDeSala()" style="margin-top:8px;">
         🚪 Salir de la partida
       </button>
     </div>
 
-  </div>
-
-  <!-- ================================================================= -->
-  <!-- MODAL DE FIN DE PARTIDA                                            -->
-  <!-- ================================================================= -->
-  <div class="modal-overlay" id="modal-gameover">
-    <div class="modal">
-      <h2 id="modal-title">🏆</h2>
-      <p class="winner-text" id="modal-text"></p>
-      <div id="modal-scores" style="margin:12px 0; font-size:0.9em;"></div>
-      <button class="btn btn-primary" id="btn-new-round" onclick="nuevaRonda()" style="display:none;">🔄 Nueva Ronda</button>
-      <button class="btn btn-secondary" onclick="volverAlLobby()" style="margin-top:8px;">Volver al Lobby</button>
-    </div>
   </div>
 
   <!-- ================================================================= -->
@@ -213,9 +199,6 @@
 
     /** @type {JuegoEscondite} */
     let juego = null;
-
-    /** Casilla seleccionada por el jugador (para mover) */
-    let casillaSeleccionada = null;
 
     /** Intervalo para refrescar lista de jugadores */
     let intervalJugadores = null;
@@ -324,6 +307,8 @@
         await gameInfra.joinRoom(codigo, nombre);
         mostrarPantalla('waiting');
         actualizarSalaEspera(codigo);
+        // Forzar refresco después de unirse (por si el listener no ha llegado aún)
+        setTimeout(() => actualizarListaJugadores(), 800);
         notificar(`✅ Te has unido a "${codigo}"`);
       } catch (error) {
         mostrarError(error.message);
@@ -338,14 +323,8 @@
       if (gameInfra) {
         gameInfra.leaveRoom();
       }
-      casillaSeleccionada = null;
       mostrarPantalla('lobby');
       notificar('Has salido de la sala');
-    }
-
-    function volverAlLobby() {
-      document.getElementById('modal-gameover').classList.remove('active');
-      salirDeSala();
     }
 
     // =========================================================================
@@ -391,8 +370,16 @@
       const players = snap.val() || {};
       gameInfra._players = players;
 
-      // Ordenar: Tú primero, luego alfabético
+      // Leer puntuaciones de Firebase para ordenar por ranking
+      const gsSnap = await database.ref(`rooms/${gameInfra.roomCode}/gameState/custom`).once('value');
+      const custom = gsSnap.val() || {};
+      const puntuaciones = custom.puntuaciones || {};
+
+      // Ordenar por puntuación descendente, Tú primero si empate
       const playerIds = Object.keys(players).sort((a, b) => {
+        const ptsA = puntuaciones[a] || 0;
+        const ptsB = puntuaciones[b] || 0;
+        if (ptsB !== ptsA) return ptsB - ptsA;
         if (a === gameInfra.playerId) return -1;
         if (b === gameInfra.playerId) return 1;
         return (players[a].name || '').localeCompare(players[b].name || '');
@@ -405,6 +392,7 @@
         const esHost = p.isHost || false;
         const soyYo = pid === gameInfra.playerId;
         const online = p.connected;
+        const pts = puntuaciones[pid] || 0;
 
         let badges = '';
         if (esHost) badges += '<span class="player-badge badge-host">Anfitrión</span> ';
@@ -416,10 +404,17 @@
               <span class="player-status ${online ? 'status-online' : 'status-offline'}"></span>
               <span class="player-name">${p.name || 'Jugador'}</span>
             </div>
-            <div>${badges}</div>
+            <div>${badges} <span style="font-weight:700;color:#f1c40f;">${pts} pts</span></div>
           </li>
         `;
       }).join('');
+
+      // Mostrar ranking si hay puntuaciones
+      const rankingContainer = document.getElementById('ranking-container');
+      if (rankingContainer && Object.keys(puntuaciones).length > 0 && Object.values(puntuaciones).some(v => v > 0)) {
+        rankingContainer.style.display = 'block';
+        actualizarPuntuaciones(puntuaciones);
+      }
 
       // Actualizar botón de inicio
       const btnStart = document.getElementById('btn-start-game');
@@ -494,11 +489,6 @@
         dibujarTablero();
         notificar('🎮 ¡La partida ha comenzado!');
       });
-
-      // Mensajes
-      gameInfra.on('message', (msg) => {
-        agregarMensajeAlLog(msg);
-      });
     }
 
     // =========================================================================
@@ -528,7 +518,21 @@
       });
 
       juego.on('gameOver', ({ winner, razon }) => {
-        mostrarGameOver(winner, razon);
+        const pts = juego.puntuaciones;
+        const nombreReina = gameInfra._getPlayerName(juego.idReina);
+        if (winner === 'reina') {
+          notificar(`👑 ¡${nombreReina} (Reina) ha ganado! ${razon}`);
+        } else {
+          notificar(`🏰 ¡Los Reyes han ganado! ${razon}`);
+        }
+        // Volver a la sala de espera tras 2.5s
+        setTimeout(() => {
+          juego = null;
+          mostrarPantalla('waiting');
+          actualizarSalaEspera(gameInfra.roomCode);
+          actualizarPuntuaciones(pts);
+          notificar('📊 De vuelta a la sala. ¡Revisa el ranking!');
+        }, 2500);
       });
 
       juego.on('scoreChange', (puntuaciones) => {
@@ -630,13 +634,7 @@
           }
 
           // --- RESALTAR CASILLA SELECCIONADA ---
-          if (!fueraDeVision && casillaSeleccionada && casillaSeleccionada.row === row && casillaSeleccionada.col === col) {
-            ctx.fillStyle = 'rgba(233, 69, 96, 0.45)';
-            ctx.fillRect(x, y, ts, ts);
-            ctx.strokeStyle = '#e94560';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(x + 2, y + 2, ts - 4, ts - 4);
-          }
+          // (sin selección previa, clic directo)
 
           // --- BORDE DE CASILLA ---
           if (!fueraDeVision) {
@@ -791,38 +789,21 @@
     }
 
     async function manejarClickCasilla(row, col) {
-      // Si no hay casilla seleccionada, seleccionar la pieza del jugador
-      if (!casillaSeleccionada) {
-        if (juego.miRol === 'reina') {
-          if (juego.posicionReina && juego.posicionReina.row === row && juego.posicionReina.col === col) {
-            casillaSeleccionada = { row, col };
-            dibujarTablero();
-            notificar('♛ Reina seleccionada. Haz clic en el destino.');
-          }
-        } else if (juego.miRol === 'rey') {
-          const miPos = juego.posicionesReyes[gameInfra.playerId];
-          if (miPos && miPos.row === row && miPos.col === col) {
-            casillaSeleccionada = { row, col };
-            dibujarTablero();
-            notificar('♚ Rey seleccionado. Haz clic en una casilla adyacente.');
-          }
-        }
-        return;
-      }
-
-      // Ya hay casilla seleccionada → intentar mover a (row, col)
-      const destino = { row, col };
-      casillaSeleccionada = null; // Limpiar selección
-      dibujarTablero();
+      if (!juego || juego.eliminado) return;
+      if (!gameInfra.turn.isMyTurn()) return;
 
       try {
         if (juego.miRol === 'reina') {
-          const resultado = await juego.moverReina(destino.row, destino.col);
+          // Sin selección previa: mover directamente desde posición actual
+          if (!juego.posicionReina) return;
+          const resultado = await juego.moverReina(row, col);
           if (!resultado.valido) {
             notificar(`⚠️ ${resultado.razon}`);
           }
         } else if (juego.miRol === 'rey') {
-          const resultado = await juego.moverRey(destino.row, destino.col);
+          const miPos = juego.posicionesReyes[gameInfra.playerId];
+          if (!miPos) return;
+          const resultado = await juego.moverRey(row, col);
           if (!resultado.valido) {
             notificar(`⚠️ ${resultado.razon}`);
           }
@@ -856,7 +837,7 @@
           const quedan = juego.maxMovimientosReina - juego.movimientosReina;
           indicador.textContent = `🎯 ¡TU TURNO! ♛ Reina — Te quedan ${quedan} movimientos`;
         } else {
-          indicador.textContent = '🎯 ¡TU TURNO! ♚ Rey — Haz clic en tu pieza y luego en el destino';
+          indicador.textContent = '🎯 ¡TU TURNO! ♚ Rey — Haz clic en la casilla destino';
         }
         indicador.className = 'turn-indicator my-turn';
       } else {
@@ -884,89 +865,36 @@
     }
 
     // =========================================================================
-    // LOG DE MENSAJES
-    // =========================================================================
-
-    function agregarMensajeAlLog(msg) {
-      const log = document.getElementById('message-log');
-      if (!log) return;
-
-      // Limpiar placeholder
-      if (log.querySelector('p') && log.querySelector('p').textContent === 'Esperando eventos...') {
-        log.innerHTML = '';
-      }
-
-      const tipo = msg.type || 'chat';
-      const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
-
-      const div = document.createElement('div');
-      div.className = `message-item msg-${tipo}`;
-      div.innerHTML = `
-        <span class="msg-player">${msg.playerName || 'Sistema'}</span>
-        ${msg.text}
-        <span class="msg-time">${time}</span>
-      `;
-
-      log.appendChild(div);
-      log.scrollTop = log.scrollHeight;
-    }
-
-    // =========================================================================
-    // GAME OVER
+    // PUNTUACIONES (se muestran en sala de espera también)
     // =========================================================================
 
     function actualizarPuntuaciones(puntuaciones) {
-      const el = document.getElementById('score-list');
-      if (!el || !puntuaciones) return;
+      // En partida: score-list de la pantalla de juego
+      const elJuego = document.getElementById('score-list');
+      if (elJuego && puntuaciones) {
+        renderizarPuntuaciones(elJuego, puntuaciones);
+      }
+      // En sala de espera: mostrar ranking si hay puntuaciones
+      const elRanking = document.getElementById('ranking-list');
+      if (elRanking && puntuaciones && Object.keys(puntuaciones).length > 0) {
+        renderizarPuntuaciones(elRanking, puntuaciones);
+      }
+    }
+
+    function renderizarPuntuaciones(el, puntuaciones) {
       const entries = Object.entries(puntuaciones);
       if (entries.length === 0) {
         el.innerHTML = '<span style="color:#a0a0b0;">Sin puntuaciones aún</span>';
         return;
       }
-      el.innerHTML = entries.map(([pid, pts]) => {
+      // Ordenar por puntuación descendente
+      entries.sort((a, b) => b[1] - a[1]);
+      el.innerHTML = entries.map(([pid, pts], i) => {
         const nombre = gameInfra._getPlayerName(pid);
-        return `<span style="background:#0f3460;padding:4px 10px;border-radius:6px;">${nombre}: <b>${pts} pts</b></span>`;
+        const medalla = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+        const soyYo = pid === gameInfra.playerId;
+        return `<span style="background:${soyYo ? '#0f3460' : '#1a1a2e'};padding:4px 10px;border-radius:6px;border:${soyYo ? '2px solid #e94560' : '1px solid #0f3460'};">${medalla} ${nombre}: <b>${pts} pts</b></span>`;
       }).join('');
-    }
-
-    async function nuevaRonda() {
-      document.getElementById('modal-gameover').classList.remove('active');
-      try {
-        await juego.nuevaRonda();
-        dibujarTablero();
-        actualizarInfoJuego();
-        notificar(`🔄 ¡Ronda ${juego.ronda} iniciada!`);
-      } catch (e) {
-        notificar(`❌ ${e.message}`);
-      }
-    }
-
-    function mostrarGameOver(winner, razon) {
-      const modal = document.getElementById('modal-gameover');
-      const title = document.getElementById('modal-title');
-      const text = document.getElementById('modal-text');
-      const scores = document.getElementById('modal-scores');
-      const btnRound = document.getElementById('btn-new-round');
-
-      if (winner === 'reina') {
-        title.textContent = '👑 ¡La Reina ha ganado!';
-        text.innerHTML = `<span>${gameInfra._getPlayerName(juego.idReina)}</span> ha capturado a todos los reyes.<br><small>${razon}</small>`;
-      } else {
-        title.textContent = '🏰 ¡Los Reyes han ganado!';
-        text.innerHTML = `La reina gastó todos sus movimientos.<br><small>${razon}</small>`;
-      }
-
-      // Mostrar puntuaciones
-      if (juego.puntuaciones && Object.keys(juego.puntuaciones).length > 0) {
-        scores.innerHTML = '<b>Puntuaciones:</b><br>' + Object.entries(juego.puntuaciones).map(([pid, pts]) =>
-          `${gameInfra._getPlayerName(pid)}: <b>${pts} pts</b>`
-        ).join('<br>');
-      }
-
-      // Botón de nueva ronda (solo host)
-      btnRound.style.display = gameInfra.isHost ? 'block' : 'none';
-
-      modal.classList.add('active');
     }
 
     // =========================================================================
@@ -989,14 +917,12 @@
     }
 
     // =========================================================================
-    // ATALLO DE TECLADO: ESC para limpiar selección
+    // ATALLO DE TECLADO: ESC
     // =========================================================================
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        casillaSeleccionada = null;
-        dibujarTablero();
-        notificar('Selección cancelada');
+        notificar('⌨️ Escape');
       }
     });
 
