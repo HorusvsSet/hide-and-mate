@@ -211,6 +211,9 @@
     /** Casilla seleccionada por el jugador (para mover) */
     let casillaSeleccionada = null;
 
+    /** Intervalo para refrescar lista de jugadores */
+    let intervalJugadores = null;
+
     /** Tamaño en píxeles del canvas */
     const CANVAS_SIZE = 480;
     const TILE_SIZE = CANVAS_SIZE / 8;
@@ -234,6 +237,14 @@
       document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
       const el = document.getElementById(`screen-${pantalla}`);
       if (el) el.classList.add('active');
+
+      // Auto-refrescar jugadores cada 5s cuando estamos en la sala de espera
+      if (pantalla === 'waiting') {
+        if (intervalJugadores) clearInterval(intervalJugadores);
+        intervalJugadores = setInterval(() => actualizarListaJugadores(), 5000);
+      } else {
+        if (intervalJugadores) { clearInterval(intervalJugadores); intervalJugadores = null; }
+      }
     }
 
     function ocultarError() {
@@ -305,6 +316,7 @@
     }
 
     function salirDeSala() {
+      if (intervalJugadores) { clearInterval(intervalJugadores); intervalJugadores = null; }
       if (juego) {
         juego = null;
       }
@@ -342,20 +354,23 @@
       }
     }
 
-    function actualizarListaJugadores() {
+    async function actualizarListaJugadores() {
       const lista = document.getElementById('player-list');
       const count = document.getElementById('player-count');
 
-      if (!gameInfra) return;
+      if (!gameInfra || !gameInfra.roomCode) return;
 
-      const players = gameInfra._players;
+      // Leer directamente de Firebase en vez de _players (evita race condition)
+      const snap = await database.ref(`rooms/${gameInfra.roomCode}/players`).once('value');
+      const players = snap.val() || {};
+      gameInfra._players = players;
       const playerIds = Object.keys(players);
 
       count.textContent = playerIds.length;
 
       lista.innerHTML = playerIds.map(pid => {
         const p = players[pid];
-        const esHost = p.isHost || pid === gameInfra.roomCode ? gameInfra._players[pid]?.isHost : false;
+        const esHost = p.isHost || false;
         const soyYo = pid === gameInfra.playerId;
         const online = p.connected;
 
