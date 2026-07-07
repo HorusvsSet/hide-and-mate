@@ -59,9 +59,12 @@ class JuegoEscondite {
       this.posicionReina = board.queen || null;
       this.posicionesReyes = board.kings || {};
       this.casillasBloqueadas = board.blockedTiles || [];
-      if (board.discoveredBlocks && this.game.playerId) {
-        const mis = board.discoveredBlocks[this.game.playerId];
-        if (mis) this._bloqueadasDescubiertas = new Set(mis);
+      // Cargar descubrimientos: board.discoveredBlocks (actual) + vars (histórico)
+      if (this.game.playerId) {
+        const delBoard = board.discoveredBlocks?.[this.game.playerId] || [];
+        const delVars = this.game.vars.get('discoveredBlocks', {})[this.game.playerId] || [];
+        const fusion = new Set([...delBoard, ...delVars]);
+        this._bloqueadasDescubiertas = fusion;
       }
     }
     if (!this.miRol && this.idReina) {
@@ -86,20 +89,19 @@ class JuegoEscondite {
     if (!this.game.isHost) throw new Error('Solo el anfitrión.');
     const jugadores = Object.keys(this.game._players);
     if (jugadores.length < 2) throw new Error('Mínimo 2 jugadores.');
-    const idReina = jugadores[0];
-    let idsReyes = jugadores.slice(1);
+
+    // Rotación de reina: cada ronda un jugador distinto
+    const idxReina = (this.ronda - 1) % jugadores.length;
+    const idReina = jugadores[idxReina];
+    let idsReyes = jugadores.filter((_, i) => i !== idxReina);
     // Orden aleatorio de reyes cada ronda
     this._barajar(idsReyes);
     const maxMovs = this.MOVIMIENTOS_POR_JUGADORES[jugadores.length] || 15;
     const bloqueadas = this._generarBloqueadas();
     // Colocar reyes en 3 esquinas, reina en la 4ª
     const { posReina, posReyes } = this._colocarEnEsquinas(idsReyes);
-    const discoveredBlocks = {};
-    // Reyes: solo ven adyacentes, reina: LOS completo
-    discoveredBlocks[idReina] = this._murosEnLOS(posReina, bloqueadas);
-    idsReyes.forEach(pid => {
-      discoveredBlocks[pid] = this._murosAdyacentes(posReyes[pid], bloqueadas);
-    });
+    // Recuperar descubrimientos anteriores (muros permanentes)
+    const discoveredBlocks = this._cargarDescubrimientosPrevios(jugadores, idReina, idsReyes, posReina, posReyes, bloqueadas);
     const board = { size: 8, queen: posReina, kings: posReyes, blockedTiles: bloqueadas, discoveredBlocks };
     const puntuaciones = this.game.vars.get('puntuaciones', {});
     jugadores.forEach(p => { if (!(p in puntuaciones)) puntuaciones[p] = 0; });
@@ -110,15 +112,15 @@ class JuegoEscondite {
     await this.game.vars.set('reyesCapturados', []);
     await this.game.vars.set('ronda', this.ronda || 1);
     await this.game.vars.set('puntuaciones', puntuaciones);
-    // Orden de turno: reina primero, luego reyes en orden aleatorio
-    const turnOrder = [idReina, ...idsReyes];
-    await this.game.startGame({ board, turnOrder, currentTurn: idReina,
-      objects: { board }, custom: { idReina, movimientosReina:0, maxMovimientosReina:maxMovs, reyesCapturados:[], ronda:this.ronda||1, puntuaciones } });
+    // Reyes mueven primero, luego la reina
+    const turnOrder = [...idsReyes, idReina];
+    await this.game.startGame({ board, turnOrder, currentTurn: idsReyes[0],
+      objects: { board }, custom: { idReina, movimientosReina:0, maxMovimientosReina:maxMovs, reyesCapturados:[], ronda:this.ronda||1, puntuaciones, discoveredBlocks } });
     this.posicionReina = posReina; this.posicionesReyes = posReyes; this.casillasBloqueadas = bloqueadas;
     this.idReina = idReina; this.miRol = this.game.playerId === idReina ? 'reina' : 'rey';
     this.movimientosReina = 0; this.maxMovimientosReina = maxMovs;
     if (discoveredBlocks[this.game.playerId]) this._bloqueadasDescubiertas = new Set(discoveredBlocks[this.game.playerId]);
-    console.log(`✅ Ronda ${this.ronda} — Reina: ${maxMovs} movs, ${idsReyes.length} reyes`);
+    console.log(`✅ Ronda ${this.ronda} — Reina: ${this.game._getPlayerName(idReina)}, ${maxMovs} movs, ${idsReyes.length} reyes`);
     return board;
   }
 
@@ -132,6 +134,28 @@ class JuegoEscondite {
     this.miRol = null; this.reyesCapturados = []; this.eliminado = false;
     await this.inicializarJuego();
     this._emit('roundStart', this.ronda);
+  }
+
+  _cargarDescubrimientosPrevios(jugadores, idReina, idsReyes, posReina, posReyes, bloqueadas) {
+    // Intentar recuperar descubrimientos de la ronda anterior
+    const prevDB = this.game.vars.get('discoveredBlocks', {});
+    const discoveredBlocks = {};
+
+    // Siempre ver lo que está en LOS/adyacente AHORA
+    discoveredBlocks[idReina] = this._murosEnLOS(posReina, bloqueadas);
+    idsReyes.forEach(pid => {
+      const ahora = this._murosAdyacentes(posReyes[pid], bloqueadas);
+      // Fusionar con lo descubierto antes (permanente)
+      const antes = prevDB[pid] || [];
+      const fusion = new Set([...ahora, ...antes]);
+      discoveredBlocks[pid] = Array.from(fusion);
+    });
+    // La reina también hereda sus descubrimientos anteriores
+    if (prevDB[idReina]) {
+      const fusion = new Set([...discoveredBlocks[idReina], ...prevDB[idReina]]);
+      discoveredBlocks[idReina] = Array.from(fusion);
+    }
+    return discoveredBlocks;
   }
 
   // ============= GENERACIÓN =============
@@ -345,6 +369,8 @@ class JuegoEscondite {
     discoveredBlocks[this.game.playerId] = Array.from(this._bloqueadasDescubiertas);
     const board = { size:8, queen:reinaPos, kings:reyesPos, blockedTiles:this.casillasBloqueadas, discoveredBlocks };
     await this.game.objects.set('board', board);
+    // Guardar también en vars para persistir entre rondas
+    await this.game.vars.set('discoveredBlocks', discoveredBlocks);
   }
 
   async _guardarDescubrimientos() {
@@ -353,6 +379,7 @@ class JuegoEscondite {
       if (!ba.discoveredBlocks) ba.discoveredBlocks = {};
       ba.discoveredBlocks[this.game.playerId] = Array.from(this._bloqueadasDescubiertas);
       await this.game.objects.set('board', ba);
+      await this.game.vars.set('discoveredBlocks', ba.discoveredBlocks);
     } catch(e) { console.error('Error guardando descubrimientos:', e); }
   }
 
