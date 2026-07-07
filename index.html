@@ -364,7 +364,13 @@
       const snap = await database.ref(`rooms/${gameInfra.roomCode}/players`).once('value');
       const players = snap.val() || {};
       gameInfra._players = players;
-      const playerIds = Object.keys(players);
+
+      // Ordenar: Tú primero, luego alfabético
+      const playerIds = Object.keys(players).sort((a, b) => {
+        if (a === gameInfra.playerId) return -1;
+        if (b === gameInfra.playerId) return 1;
+        return (players[a].name || '').localeCompare(players[b].name || '');
+      });
 
       count.textContent = playerIds.length;
 
@@ -552,9 +558,6 @@
         reyesEnTablero[`${pos.row},${pos.col}`] = pid;
       });
 
-      const soyRey = juego.miRol === 'rey';
-      const soyReina = juego.miRol === 'reina';
-
       // Dibujar casillas
       for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 8; col++) {
@@ -562,103 +565,172 @@
           const y = row * ts;
           const esClaro = (row + col) % 2 === 0;
           const key = `${row},${col}`;
+          const fueraDeVision = !setVisibles.has(key);
 
-          // Color base del tablero de ajedrez
-          const color = esClaro ? '#f0d9b5' : '#b58863';
-          ctx.fillStyle = color;
+          // --- Color base del tablero ---
+          const baseLight = '#ede0c8';
+          const baseDark = '#7b6b4f';
+          const colorBase = esClaro ? baseLight : baseDark;
+          ctx.fillStyle = colorBase;
           ctx.fillRect(x, y, ts, ts);
 
           // --- NIEBLA DE GUERRA ---
-          // Tanto la reina como los reyes solo ven sus visibleTiles
-          // (para la reina: 8 dir. de ataque; para el rey: 8 dir. bloqueadas por muros)
-          const fueraDeVision = !setVisibles.has(key);
-
           if (fueraDeVision) {
-            // Casilla fuera de la línea de visión: oscurecer
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+            // Degradado oscuro con textura punteada
+            const grd = ctx.createLinearGradient(x, y, x + ts, y + ts);
+            grd.addColorStop(0, 'rgba(10, 10, 30, 0.92)');
+            grd.addColorStop(0.5, 'rgba(15, 15, 40, 0.88)');
+            grd.addColorStop(1, 'rgba(10, 10, 30, 0.92)');
+            ctx.fillStyle = grd;
+            ctx.fillRect(x, y, ts, ts);
+
+            // Textura de niebla (puntos sutiles)
+            ctx.fillStyle = 'rgba(30, 30, 60, 0.3)';
+            const seed = (row * 13 + col * 7) % 100;
+            for (let i = 0; i < 8; i++) {
+              const px = x + 6 + ((seed + i * 19) % (ts - 12));
+              const py = y + 6 + ((seed * 3 + i * 11) % (ts - 12));
+              ctx.beginPath();
+              ctx.arc(px, py, 1.2, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          } else {
+            // Casilla visible: ligero brillo interior
+            const glow = ctx.createRadialGradient(x + ts/2, y + ts/2, ts*0.1, x + ts/2, y + ts/2, ts*0.7);
+            glow.addColorStop(0, 'rgba(255,255,255,0.06)');
+            glow.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = glow;
             ctx.fillRect(x, y, ts, ts);
           }
 
-          // Resaltar casilla seleccionada (solo si está en visión)
+          // --- RESALTAR CASILLA SELECCIONADA ---
           if (!fueraDeVision && casillaSeleccionada && casillaSeleccionada.row === row && casillaSeleccionada.col === col) {
-            ctx.fillStyle = 'rgba(233, 69, 96, 0.5)';
+            ctx.fillStyle = 'rgba(233, 69, 96, 0.45)';
             ctx.fillRect(x, y, ts, ts);
+            ctx.strokeStyle = '#e94560';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x + 2, y + 2, ts - 4, ts - 4);
           }
 
-          // Borde sutil de la casilla
-          ctx.strokeStyle = fueraDeVision ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.15)';
-          ctx.lineWidth = 0.5;
-          ctx.strokeRect(x, y, ts, ts);
+          // --- BORDE DE CASILLA ---
+          if (!fueraDeVision) {
+            ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(x, y, ts, ts);
+          }
 
-          // --- CASILLA BLOQUEADA ---
-          // La reina ve todas las bloqueadas.
-          // Los reyes solo ven las que han descubierto (ya filtradas en board.blockedTiles).
+          // --- CASILLA BLOQUEADA (MURO) ---
           if (setBloqueadas.has(key) && !fueraDeVision) {
-            ctx.fillStyle = '#2c3e50';
-            ctx.fillRect(x + 4, y + 4, ts - 8, ts - 8);
-            ctx.strokeStyle = '#e74c3c';
-            ctx.lineWidth = 2;
+            // Fondo del muro
+            ctx.fillStyle = '#3d2b1f';
+            ctx.fillRect(x + 3, y + 3, ts - 6, ts - 6);
+            // Textura ladrillo
+            ctx.strokeStyle = '#5a3d2e';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x + 5, y + 5, ts - 10, ts - 10);
+            // Líneas de ladrillo
             ctx.beginPath();
-            ctx.moveTo(x + 10, y + 10);
-            ctx.lineTo(x + ts - 10, y + ts - 10);
-            ctx.moveTo(x + ts - 10, y + 10);
-            ctx.lineTo(x + 10, y + ts - 10);
+            ctx.moveTo(x + 5, y + ts/2); ctx.lineTo(x + ts - 5, y + ts/2);
+            ctx.moveTo(x + ts/2, y + 5); ctx.lineTo(x + ts/2, y + ts/2);
+            ctx.moveTo(x + ts/3, y + ts/2); ctx.lineTo(x + ts/3, y + ts - 5);
+            ctx.moveTo(x + 2*ts/3, y + ts/2); ctx.lineTo(x + 2*ts/3, y + ts - 5);
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+            // X de bloqueo
+            ctx.strokeStyle = 'rgba(231, 76, 60, 0.7)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(x + 12, y + 12);
+            ctx.lineTo(x + ts - 12, y + ts - 12);
+            ctx.moveTo(x + ts - 12, y + 12);
+            ctx.lineTo(x + 12, y + ts - 12);
             ctx.stroke();
           }
 
           // --- REINA ---
-          // La reina siempre se ve a sí misma.
-          // Los reyes solo la ven si está en su LOS (board.queen != null).
           if (board.queen && board.queen.row === row && board.queen.col === col) {
-            dibujarPieza(ctx, x + ts / 2, y + ts / 2, ts * 0.38, '#f1c40f', '♛');
+            dibujarPieza(ctx, x + ts / 2, y + ts / 2, ts * 0.38, '#f1c40f', '#e67e22', '♛');
           }
 
           // --- REYES ---
-          // board.kings ya está filtrado: solo contiene los visibles para este jugador
           if (reyesEnTablero[key]) {
             const pid = reyesEnTablero[key];
             const capturado = juego.reyesCapturados.includes(pid);
             const soyYo = pid === gameInfra.playerId;
-            const colorRey = capturado ? '#7f8c8d' : (soyYo ? '#2ecc71' : '#3498db');
-            const simbolo = soyYo ? '♚' : '♚';
-            dibujarPieza(ctx, x + ts / 2, y + ts / 2, ts * 0.32, colorRey, simbolo);
+            const color = capturado ? '#7f8c8d' : (soyYo ? '#2ecc71' : '#3498db');
+            const borde = capturado ? '#5a6a6a' : (soyYo ? '#1f8b4c' : '#2176ae');
+            dibujarPieza(ctx, x + ts / 2, y + ts / 2, ts * 0.32, color, borde, '♚');
           }
         }
       }
 
-      // Dibujar coordenadas
-      ctx.fillStyle = '#a0a0b0';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
+      // --- MARCO DEL TABLERO ---
+      ctx.strokeStyle = '#0f3460';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(1.5, 1.5, size - 3, size - 3);
+
+      // --- COORDENADAS ---
       const letras = 'abcdefgh';
       for (let i = 0; i < 8; i++) {
-        ctx.fillText(letras[i], i * ts + ts / 2, size - 4);
-        ctx.fillText(8 - i, size - 10, i * ts + ts / 2 + 4);
+        // Letras abajo
+        const cxLetra = i * ts + ts / 2;
+        const colorCoord = (i % 2 === 0) ? '#ede0c8' : '#7b6b4f';
+        ctx.fillStyle = '#eaeaea';
+        ctx.font = 'bold 11px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(letras[i], cxLetra, size - 15);
+        // Números derecha
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(8 - i, size - 6, i * ts + ts / 2);
       }
     }
 
-    function dibujarPieza(ctx, cx, cy, radio, color, simbolo) {
-      // Sombra
+    function dibujarPieza(ctx, cx, cy, radio, color, borde, simbolo) {
+      // Sombra exterior
       ctx.beginPath();
-      ctx.arc(cx + 2, cy + 2, radio, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.arc(cx + 3, cy + 3, radio, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fill();
+
+      // Halo exterior
+      ctx.beginPath();
+      ctx.arc(cx, cy, radio + 3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
       ctx.fill();
 
       // Círculo principal
       ctx.beginPath();
       ctx.arc(cx, cy, radio, 0, Math.PI * 2);
-      ctx.fillStyle = color;
+      const grad = ctx.createRadialGradient(cx - radio*0.3, cy - radio*0.3, radio*0.1, cx, cy, radio);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.4, color);
+      grad.addColorStop(1, borde);
+      ctx.fillStyle = grad;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-      ctx.lineWidth = 2;
+
+      // Borde
+      ctx.strokeStyle = borde;
+      ctx.lineWidth = 2.5;
       ctx.stroke();
+
+      // Brillo
+      ctx.beginPath();
+      ctx.arc(cx - radio*0.25, cy - radio*0.25, radio*0.35, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fill();
 
       // Símbolo
       ctx.fillStyle = '#fff';
-      ctx.font = `${radio * 1.5}px serif`;
+      ctx.font = `bold ${radio * 1.4}px serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 2;
       ctx.fillText(simbolo, cx, cy + 1);
+      ctx.shadowBlur = 0;
     }
 
     // =========================================================================
