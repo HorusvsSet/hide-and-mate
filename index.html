@@ -305,6 +305,15 @@
         return;
       }
 
+      // Verificar nombre duplicado
+      const snap = await database.ref(`rooms/${codigo}/players`).once('value');
+      const players = snap.val() || {};
+      const nombresExistentes = Object.values(players).map(p => (p.name || '').toLowerCase().trim());
+      if (nombresExistentes.includes(nombre.toLowerCase())) {
+        mostrarError('Ya hay un jugador con ese nombre. Elige otro.');
+        return;
+      }
+
       try {
         await gameInfra.joinRoom(codigo, nombre);
         mostrarPantalla('waiting');
