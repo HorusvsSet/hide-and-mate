@@ -234,16 +234,10 @@ class GameInfrastructure {
    * (misma pestaña/navegador = mismo jugador).
    */
   _getOrCreatePlayerId() {
-    const STORAGE_KEY = 'game_player_id';
-    let playerId = sessionStorage.getItem(STORAGE_KEY);
-    
-    if (!playerId) {
-      // Generar ID único: timestamp + random
-      playerId = 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 8);
-      sessionStorage.setItem(STORAGE_KEY, playerId);
-    }
-    
-    return playerId;
+    // NO reutilizar sessionStorage — cada pestaña debe tener su propio ID
+    // para evitar que dos jugadores en el mismo navegador se sobrescriban
+    const tabId = Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 10);
+    return 'p_' + tabId;
   }
 
   /**
@@ -1153,9 +1147,6 @@ class GameInfrastructure {
     this._messages = [];
     this._currentTurn = null;
     this._turnOrder = [];
-
-    // Limpiar sessionStorage
-    sessionStorage.removeItem('game_room_code');
   }
 
   // =========================================================================
