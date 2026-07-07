@@ -418,6 +418,11 @@
         }
       });
 
+      // Lista de jugadores actualizada (carga inicial)
+      gameInfra.on('playersUpdate', (players) => {
+        actualizarListaJugadores();
+      });
+
       // Jugador se une
       gameInfra.on('playerJoin', (player) => {
         notificar(`👤 ${player.name} se ha unido`);
