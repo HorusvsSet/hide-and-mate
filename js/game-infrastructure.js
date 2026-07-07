@@ -125,6 +125,7 @@ class GameInfrastructure {
       stateChange: [],     // (gameState)        -> cuando cambia el estado del juego
       playerJoin: [],      // (player)           -> cuando un jugador se une
       playerLeave: [],     // (player)           -> cuando un jugador se va
+      playersUpdate: [],   // (players)          -> cuando se recibe la lista inicial de jugadores
       gameStart: [],       // (gameState)        -> cuando la partida empieza
       message: [],         // (message)          -> cuando llega un mensaje
       connectionChange: [],// (connected: bool)  -> cuando cambia la conexión
