@@ -88,6 +88,12 @@
           <!-- Se rellena dinámicamente -->
         </ul>
 
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button class="btn btn-secondary btn-block" onclick="refrescarJugadoresAhora()" style="font-size:0.8em;">
+            👥 Refrescar lista
+          </button>
+        </div>
+
         <div style="display:flex; gap:10px; margin-top:12px;">
           <button class="btn btn-primary btn-block" id="btn-start-game" onclick="iniciarPartida()" disabled>
             ▶ Iniciar Partida
@@ -360,6 +366,17 @@
           : '▶ Iniciar (mínimo 2 jugadores)';
       } else {
         btnStart.textContent = '⏳ Esperando al anfitrión...';
+      }
+    }
+
+    // Forzar refresco manual desde Firebase (para debug/cuando falla el listener)
+    async function refrescarJugadoresAhora() {
+      const btn = event?.target;
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Cargando...'; }
+      try {
+        await actualizarListaJugadores();
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '👥 Refrescar lista'; }
       }
     }
 
